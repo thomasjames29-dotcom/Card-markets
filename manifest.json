@@ -1,14 +1,14 @@
 {
-  "name": "Yellow Card Predictor",
-  "short_name": "CardRisk",
+  "name": "Foul Watch Live",
+  "short_name": "FoulWatch",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#121212",
-  "theme_color": "#FFD700",
+  "theme_color": "#00ff88",
   "icons": [
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/7693/7693273.png",
-      "sizes": "192x192",
+      "src": "Icon1.png",
+      "sizes": "512x512",
       "type": "image/png"
     }
   ]
