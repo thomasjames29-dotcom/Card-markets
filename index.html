@@ -40,7 +40,8 @@
 
         .stat-big { font-size: 1.8rem; font-weight: bold; color: var(--accent); line-height: 1; }
         .stat-label { font-size: 0.7rem; color: #888; text-transform: uppercase; }
-        .match-tag { font-size: 0.75rem; color: #888; margin-top: 5px; background: #333; display: inline-block; padding: 2px 6px; border-radius: 4px;}
+        .match-tag { font-size: 0.75rem; color: #aaa; margin-top: 5px; display: inline-block; }
+        .cup-badge { background: #5e35b1; color: white; padding: 2px 5px; border-radius: 3px; font-size: 0.65rem; margin-left: 5px; vertical-align: middle;}
         
         /* Loading / Status */
         .status-bar { text-align: center; color: #666; font-size: 0.9rem; margin-bottom: 15px; }
@@ -67,8 +68,9 @@
         
         <div style="background:#222; padding:15px; border-radius:8px; color:#aaa; font-size:0.9rem; line-height:1.6;">
             <strong>Scanner Rules:</strong><br>
-            • Only monitors matches <strong>60+ minutes</strong> in.<br>
-            • Only shows players with <strong>2+ fouls</strong>.<br>
+            • Monitors Leagues + <strong>Scotland Included</strong>.<br>
+            • Only matches <strong>60+ minutes</strong> in.<br>
+            • Only players with <strong>2+ fouls</strong>.<br>
             • Auto-refreshes every <strong>60 seconds</strong>.<br>
             • 🔊 Plays sound on new alerts.
         </div>
@@ -92,8 +94,31 @@
 const Config = {
     apiKey: "0f29a2f96e9dd4231cee515cc5ec52b0", 
     apiBaseUrl: "https://v3.football.api-sports.io",
-    // Leagues to scan
-    leagues: [39, 40, 140, 135, 78, 61, 88, 253, 188], 
+    // EXPANDED LEAGUE & CUP IDs
+    leagues: [
+        // Scotland (NEW)
+        179,      // Premiership (SPL)
+        180,      // Championship
+        183,      // Scottish Cup
+        184,      // Scottish League Cup
+
+        // England
+        39, 40,   // PL, Champ
+        45, 48,   // FA Cup, Carabao
+
+        // Europe Top 5
+        140, 143, // Spain (La Liga + Copa)
+        135, 137, // Italy (Serie A + Coppa)
+        78, 81,   // Germany (Bundesliga + DFB)
+        61, 66,   // France (Ligue 1 + Coupe)
+        88, 90,   // Netherlands (Eredivisie + Cup)
+        
+        // ROW
+        253, 188, // USA (MLS), Aus (A-League)
+
+        // Continental Cups
+        2, 3, 848 // UCL, UEL, UECL
+    ],
     minTime: 60, // Minimum minutes elapsed to start tracking
     minFouls: 2  // Minimum fouls to trigger alert
 };
@@ -114,11 +139,11 @@ const AudioAlert = {
         gain.connect(this.ctx.destination);
         
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(880, this.ctx.currentTime); // High pitch
+        osc.frequency.setValueAtTime(880, this.ctx.currentTime); 
         gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
         
         osc.start();
-        osc.stop(this.ctx.currentTime + 0.2); // Short beep
+        osc.stop(this.ctx.currentTime + 0.2); 
     }
 };
 
@@ -127,11 +152,10 @@ const Data = {
     headers: { "x-rapidapi-key": Config.apiKey, "x-rapidapi-host": "v3.football.api-sports.io" },
 
     async getLiveFixtures() {
-        // Fetch ALL live games currently being played
         try {
             const response = await fetch(`${Config.apiBaseUrl}/fixtures?live=all`, { headers: this.headers });
             const json = await response.json();
-            return json.response; // Returns array of all live matches
+            return json.response; 
         } catch (e) { console.error(e); return []; }
     },
 
@@ -148,23 +172,18 @@ const Data = {
 const App = {
     state: { 
         isScanning: false, 
-        trackedPlayers: new Set(), // To track who we've already seen (for new alerts)
+        trackedPlayers: new Set(),
         matchesToScan: []
     },
     timer: null,
 
     /* --- CONTROLS --- */
     startScanner() {
-        // Initialize Audio Context on user click
         AudioAlert.init();
-        
         this.state.isScanning = true;
         document.getElementById('view-home').classList.remove('active');
         document.getElementById('view-scanner').classList.add('active');
-        
         this.runScanCycle();
-        
-        // Set Interval for 60 seconds
         this.timer = setInterval(() => this.runScanCycle(), 60000);
     },
 
@@ -184,7 +203,7 @@ const App = {
         // 1. Get ALL live games
         const allLive = await Data.getLiveFixtures();
         
-        // 2. Filter: Must be in our leagues AND > 60 mins
+        // 2. Filter: Check against our EXTENDED league/cup list
         const relevantMatches = allLive.filter(m => {
             const isTargetLeague = Config.leagues.includes(m.league.id);
             const elapsed = m.fixture.status.elapsed || 0;
@@ -198,14 +217,13 @@ const App = {
             return;
         }
 
-        this.updateStatus(`Analyzing ${relevantMatches.length} matches > ${Config.minTime}'...`);
+        this.updateStatus(`Analyzing ${relevantMatches.length} active matches...`);
         document.getElementById('emptyState').style.display = 'none';
 
-        // 3. Fetch detailed stats for each relevant match
+        // 3. Fetch detailed stats
         let globalRiskyPlayers = [];
         let newAlertFound = false;
 
-        // We use Promise.all to fetch them in parallel (faster)
         const matchPromises = relevantMatches.map(m => Data.getMatchStats(m.fixture.id));
         const matchDetails = await Promise.all(matchPromises);
 
@@ -213,8 +231,10 @@ const App = {
         matchDetails.forEach(match => {
             if (!match) return;
             const time = match.fixture.status.elapsed;
+            const leagueName = match.league.name;
+            const isCup = leagueName.toLowerCase().includes('cup') || leagueName.toLowerCase().includes('pokal') || leagueName.toLowerCase().includes('rey');
             
-            // Check Subs (players leaving the pitch)
+            // Check Subs
             const subbedOffIds = new Set();
             if(match.events) {
                 match.events.forEach(e => {
@@ -222,21 +242,16 @@ const App = {
                 });
             }
 
-            // Combine Teams
             const allPlayers = [...match.players[0].players, ...match.players[1].players];
 
-            // Filter for Risk
             allPlayers.forEach(p => {
                 const stats = p.statistics[0];
                 const fouls = stats.fouls.committed || 0;
                 
-                // CRITERIA: 2+ Fouls AND Not Booked (optional: remove !isBooked if you want to track carded players too)
-                // Assuming we want to track people *about* to get carded.
-                // If you want to see booked players too, remove the `&& stats.cards.yellow === 0` check.
+                // FILTER: 2+ Fouls + Not Subbed
                 if (fouls >= Config.minFouls && !subbedOffIds.has(p.player.id)) {
                     
                     const pId = p.player.id;
-                    // Check if this is a NEW alert
                     if (!this.state.trackedPlayers.has(pId)) {
                         this.state.trackedPlayers.add(pId);
                         newAlertFound = true;
@@ -247,6 +262,8 @@ const App = {
                         name: p.player.name,
                         team: stats.team.name,
                         match: `${match.teams.home.name} v ${match.teams.away.name}`,
+                        league: leagueName,
+                        isCup: isCup,
                         time: time,
                         fouls: fouls,
                         tackles: stats.tackles.total || 0,
@@ -258,12 +275,9 @@ const App = {
         });
 
         // 5. Sort & Render
-        // Sort by Fouls (Desc)
         globalRiskyPlayers.sort((a, b) => b.fouls - a.fouls);
 
-        if (newAlertFound) {
-            AudioAlert.playBeep();
-        }
+        if (newAlertFound) AudioAlert.playBeep();
 
         this.renderList(globalRiskyPlayers);
         this.updateStatus(`Scanning Active. Found ${globalRiskyPlayers.length} targets.`);
@@ -283,8 +297,12 @@ const App = {
             <div class="player-card ${p.isNew ? 'new-alert' : ''}" style="border-left-color:${p.booked ? 'yellow' : '#ff4444'}">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <div>
-                        <div style="font-weight:bold; font-size:1.1rem;">${p.name}</div>
+                        <div style="font-weight:bold; font-size:1.1rem;">
+                            ${p.name} 
+                            ${p.isCup ? '<span class="cup-badge">CUP</span>' : ''}
+                        </div>
                         <div class="match-tag">${p.match} (${p.time}')</div>
+                        <div style="font-size:0.75rem; color:#666">${p.league}</div>
                     </div>
                     <div style="text-align:center;">
                         <div class="stat-big">${p.fouls}</div>
@@ -307,7 +325,6 @@ const App = {
     }
 };
 
-// Simple Clock
 setInterval(() => {
     document.getElementById('clock').innerText = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
 }, 1000);
