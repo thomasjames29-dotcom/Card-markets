@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="manifest" href="manifest.json">
+    <title>Card Predictor Pro</title>
+    <style>
+        :root { --bg: #121212; --card: #1e1e1e; --text: #e0e0e0; --accent: #00ff88; --danger: #ff4444; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; padding-bottom: 80px;}
+        
+        /* Navigation / Header */
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 15px; }
+        .h1 { margin: 0; font-size: 1.2rem; color: var(--accent); cursor: pointer; }
+        .back-btn { background: #333; border: none; color: white; padding: 5px 12px; border-radius: 4px; font-size: 0.8rem; display: none; }
+
+        /* Status Dot */
+        .status-dot { height: 10px; width: 10px; background-color: #555; border-radius: 50%; display: inline-block; }
+        .status-dot.live { background-color: #00ff00; box-shadow: 0 0 5px #00ff00; }
+        
+        /* Layouts */
+        .view-section { display: none; animation: fadeIn 0.3s ease; }
+        .view-section.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Grid & Cards */
+        .grid { display: grid; gap: 10px; }
+        
+        .league-btn { 
+            background: var(--card); border: 1px solid #333; color: white; 
+            padding: 15px; border-radius: 10px; text-align: left; font-size: 1rem; 
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .league-btn:active { background: #333; }
+
+        .match-card {
+            background: var(--card); padding: 15px; border-radius: 8px; border: 1px solid #333;
+        }
+        .match-time { font-size: 0.8rem; color: #888; margin-bottom: 5px; }
+        .match-teams { font-weight: bold; font-size: 1.1rem; display: flex; justify-content: space-between; }
+        
+        /* Player Analysis Cards */
+        .player-card { background: var(--card); padding: 15px; border-radius: 12px; border-left: 5px solid #555; margin-bottom: 10px; }
+        .risk-low { border-left-color: #00c853; }
+        .risk-med { border-left-color: #ffab00; }
+        .risk-high { border-left-color: #ff4444; }
+
+        .stats-row { display: flex; justify-content: space-between; font-size: 0.85rem; color: #aaa; margin-top: 8px; }
+        .risk-score { font-size: 1.4rem; font-weight: bold; float: right; }
+        
+        /* Floating Refresh Button */
+        .fab {
+            position: fixed; bottom: 20px; right: 20px;
+            background: var(--accent); color: black;
+            width: 50px; height: 50px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 24px; box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            cursor: pointer; border: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div>
+            <button id="backBtn" class="back-btn" onclick="App.goBack()">← Back</button>
+            <span class="h1" onclick="App.goHome()">Card Predictor</span>
+        </div>
+        <div id="connectionStatus" class="status-dot"></div>
+    </div>
+
+    <div id="view-leagues" class="view-section active">
+        <h3 style="color:#888; margin-top:0;">Select Competition</h3>
+        <div id="leagueGrid" class="grid"></div>
+    </div>
+
+    <div id="view-matches" class="view-section">
+        <h3 id="leagueTitle" style="color:#888; margin-top:0;">Matches</h3>
+        <div id="matchGrid" class="grid"></div>
+        <p id="noMatchesMsg" style="text-align:center; color:#555; display:none">No matches found for today.</p>
+    </div>
+
+    <div id="view-analysis" class="view-section">
+        <div id="matchInfo" style="background:#222; padding:10px; border-radius:8px; margin-bottom:15px; font-size:0.9rem;"></div>
+        <div id="playerGrid" class="grid"></div>
+    </div>
+
+    <button class="fab" onclick="App.refreshCurrentView()">↻</button>
+
+<script>
+/**
+ * MODULE 1: CONFIGURATION
+ * IDs correspond to API-Football v3 standard league IDs.
+ */
+const Config = {
+    apiKey: "0f29a2f96e9dd4231cee515cc5ec52b0", // Your Key
+    apiBaseUrl: "https://v3.football.api-sports.io", 
+    leagues: [
+        { name: "Premier League", id: 39, country: "England" },
+        { name: "Championship", id: 40, country: "England" }, // Bet365 heavy coverage
+        { name: "La Liga", id: 140, country: "Spain" },
+        { name: "Serie A", id: 135, country: "Italy" },
+        { name: "Bundesliga", id: 78, country: "Germany" },
+        { name: "Ligue 1", id: 61, country: "France" },
+        { name: "Eredivisie", id: 88, country: "Netherlands" },
+        { name: "Primeira Liga", id: 94, country: "Portugal" },
+        { name: "MLS", id: 253, country: "USA" },
+        { name: "A-League", id: 188, country: "Australia" }
+    ],
+    weights: {
+        fouls: 15, tackle: 2, ref: 0.8, prov: 5
+    }
+};
+
+/**
+ * MODULE 2: DATA LAYER
+ */
+const Data = {
+    headers: { "x-rapidapi-key": Config.apiKey, "x-rapidapi-host": "v3.football.api-sports.io" },
+
+    async getMatches(leagueId) {
+        const today = new Date().toISOString().split('T')[0];
+        // Fetch matches for TODAY for the selected league
+        const url = `${Config.apiBaseUrl}/fixtures?league=${leagueId}&season=${this.getCurrentSeason()}&date=${today}`;
+        
+        try {
+            const res = await fetch(url, { headers: this.headers });
+            const json = await res.json();
+            return json.response;
+        } catch (e) { console.error(e); return []; }
+    },
+
+    async getMatchDetails(matchId) {
+        try {
+            const url = `${Config.apiBaseUrl}/fixtures?id=${matchId}`;
+            const res = await fetch(url, { headers: this.headers });
+            const json = await res.json();
+            return json.response[0];
+        } catch (e) { console.error(e); return null; }
+    },
+
+    getCurrentSeason() {
+        const date = new Date();
+        // Simple logic: if month is before July (6), we are in the tail end of previous year's season start
+        // e.g. Jan 2026 is usually the 2025 season for Europe.
+        // For MLS/A-League (calendar year leagues), logic might vary, but API usually handles the "current" flag nicely.
+        // For simplicity, we assume 2025 for now (standard current season).
+        return 2025; 
+    }
+};
+
+/**
+ * MODULE 3: LOGIC ENGINE
+ */
+const Predictor = {
+    calculateRisk(playerStats, refStats, opponentStats) {
+        let risk = 0;
+        const fouls = playerStats.fouls?.committed || 0;
+        const tackles = playerStats.tackles?.total || 0;
+        const yellow = playerStats.cards?.yellow || 0;
+        
+        // If already booked, risk is technically 0 for yellow (unless we predict red), 
+        // but for now let's show risk of "Next Card".
+        if(yellow > 0) return 100; 
+
+        risk += (fouls * Config.weights.fouls);
+        risk += (tackles * Config.weights.tackle);
+
+        // Ref strictness
+        const refAvg = refStats?.cardsPerGame || 4.0; 
+        risk += (refAvg * 10 * Config.weights.ref);
+
+        // Position bias
+        const pos = playerStats.games?.position;
+        if (pos === 'Defender' || pos === 'Midfielder') risk += 10;
+        if (playerStats.games?.minutes < 45) risk = risk * 0.5; // Sub risk lower
+
+        return Math.min(Math.floor(risk), 99);
+    },
+    
+    getClass(score) {
+        if (score > 65) return 'risk-high';
+        if (score > 35) return 'risk-med';
+        return 'risk-low';
+    }
+};
+
+/**
+ * MODULE 4: UI & NAVIGATION
+ */
+const App = {
+    state: { view: 'leagues', selectedLeague: null, selectedMatch: null },
+
+    init() {
+        this.renderLeagues();
+        // Auto-refresh hook
+        setInterval(() => {
+            if(this.state.view === 'analysis' && this.state.selectedMatch) {
+                this.loadAnalysis(this.state.selectedMatch);
+            }
+        }, 60000); // 1 min auto refresh
+    },
+
+    // --- NAVIGATION ---
+    setView(viewName) {
+        document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+        document.getElementById(`view-${viewName}`).classList.add('active');
+        this.state.view = viewName;
+        
+        const backBtn = document.getElementById('backBtn');
+        if(viewName === 'leagues') backBtn.style.display = 'none';
+        else backBtn.style.display = 'block';
+    },
+
+    goBack() {
+        if(this.state.view === 'analysis') {
+            this.setView('matches');
+        } else if(this.state.view === 'matches') {
+            this.setView('leagues');
+        }
+    },
+
+    goHome() {
+        this.setView('leagues');
+    },
+
+    refreshCurrentView() {
+        if(this.state.view === 'matches') this.loadMatches(this.state.selectedLeague);
+        if(this.state.view === 'analysis') this.loadAnalysis(this.state.selectedMatch);
+    },
+
+    // --- RENDERING ---
+    renderLeagues() {
+        const grid = document.getElementById('leagueGrid');
+        grid.innerHTML = Config.leagues.map(l => `
+            <div class="league-btn" onclick="App.loadMatches(${l.id}, '${l.name}')">
+                <span>${l.name}</span>
+                <span style="color:#666; font-size:0.8rem">${l.country}</span>
+            </div>
+        `).join('');
+    },
+
+    async loadMatches(leagueId, leagueName) {
+        if(leagueName) this.state.selectedLeague = leagueId;
+        document.getElementById('leagueTitle').innerText = leagueName || "Matches";
+        
+        const grid = document.getElementById('matchGrid');
+        grid.innerHTML = '<div style="text-align:center; padding:20px;">Loading...</div>';
+        this.setView('matches');
+
+        const matches = await Data.getMatches(leagueId);
+        grid.innerHTML = '';
+
+        if(matches.length === 0) {
+            document.getElementById('noMatchesMsg').style.display = 'block';
+        } else {
+            document.getElementById('noMatchesMsg').style.display = 'none';
+            matches.forEach(m => {
+                const date = new Date(m.fixture.date);
+                const time = date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                const isLive = ['1H','2H','ET','P'].includes(m.fixture.status.short);
+                
+                grid.innerHTML += `
+                    <div class="match-card" onclick="App.loadAnalysis(${m.fixture.id})">
+                        <div class="match-time">
+                            ${time} ${isLive ? '<span style="color:#00ff00; font-weight:bold">LIVE</span>' : ''}
+                        </div>
+                        <div class="match-teams">
+                            <span>${m.teams.home.name}</span>
+                            <span style="color:var(--accent)">vs</span>
+                            <span>${m.teams.away.name}</span>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+    },
+
+    async loadAnalysis(matchId) {
+        this.state.selectedMatch = matchId;
+        const grid = document.getElementById('playerGrid');
+        grid.innerHTML = '<div style="text-align:center; padding:20px;">Analyzing...</div>';
+        this.setView('analysis');
+
+        const data = await Data.getMatchDetails(matchId);
+        if(!data) return;
+
+        // Header Info
+        const refName = data.fixture.referee || "Unknown Ref";
+        document.getElementById('matchInfo').innerHTML = `
+            <strong>${data.teams.home.name} vs ${data.teams.away.name}</strong><br>
+            <span style="color:#888">Ref: ${refName} | Time: ${data.fixture.status.elapsed}'</span>
+        `;
+        
+        // Mock Ref Stats (To be accurate, you need a separate "Ref API" call)
+        const refStats = { cardsPerGame: 4.2 };
+
+        // Process Players
+        const allPlayers = [ ...data.players[0].players, ...data.players[1].players ];
+        grid.innerHTML = '';
+
+        allPlayers.forEach(p => {
+            const stats = p.statistics[0];
+            const risk = Predictor.calculateRisk(stats, refStats, {});
+            const cssClass = Predictor.getClass(risk);
+
+            grid.innerHTML += `
+                <div class="player-card ${cssClass}">
+                    <div style="display:flex; justify-content:space-between;">
+                        <div>
+                            <strong>${p.player.name}</strong><br>
+                            <span style="font-size:0.8rem; color:#888">${stats.games.position} (${p.statistics[0].team.name})</span>
+                        </div>
+                        <div style="text-align:right">
+                            <span class="risk-score" style="color:${cssClass === 'risk-high' ? '#ff4444' : '#fff'}">${risk}%</span>
+                        </div>
+                    </div>
+                    <div class="stats-row">
+                        <span>Fouls: ${stats.fouls.committed || 0}</span>
+                        <span>Tackles: ${stats.tackles.total || 0}</span>
+                        <span>Cards: ${stats.cards.yellow}</span>
+                    </div>
+                </div>
+            `;
+        });
+    }
+};
+
+// Start App
+App.init();
+</script>
+</body>
+</html>
