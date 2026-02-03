@@ -4,108 +4,137 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link rel="manifest" href="manifest.json">
-    <title>Foul Watch DEBUG</title>
+    <title>Foul Watch DEBUGGER</title>
     <style>
-        body { background: #121212; color: #00ff88; font-family: monospace; padding: 15px; font-size: 0.8rem; }
-        .log-box { background: #000; border: 1px solid #333; padding: 10px; margin-bottom: 10px; border-radius: 5px; white-space: pre-wrap; word-wrap: break-word; }
-        .match-header { color: white; font-weight: bold; font-size: 1rem; border-bottom: 1px solid #333; padding-bottom: 5px; margin-bottom: 5px; }
-        .error { color: #ff4444; }
-        .warn { color: orange; }
-        button { background: #333; color: white; border: none; padding: 15px; width: 100%; font-size: 1rem; margin-bottom: 20px; border-radius: 8px; }
+        body { background: #121212; color: #e0e0e0; font-family: monospace; padding: 15px; font-size: 0.85rem; }
+        .header { border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 15px; font-weight: bold; font-size: 1.1rem; color: #00ff88; }
+        .btn { background: #00ff88; color: black; border: none; padding: 15px; width: 100%; font-weight: bold; font-size: 1rem; border-radius: 8px; margin-bottom: 20px; cursor: pointer; }
+        
+        .card { background: #1e1e1e; padding: 10px; margin-bottom: 10px; border-radius: 6px; border-left: 4px solid #555; }
+        .card.visible { border-left-color: #00ff88; background: #0d2b1a; }
+        .card.hidden { border-left-color: #ff4444; }
+        
+        .reason { color: #ff4444; font-weight: bold; margin-top: 5px; }
+        .success { color: #00ff88; font-weight: bold; margin-top: 5px; }
+        .meta { color: #888; margin-bottom: 4px; font-size: 0.75rem; }
+        .raw-id { background: #333; color: white; padding: 2px 4px; border-radius: 3px; font-size: 0.7rem; }
     </style>
 </head>
 <body>
 
-    <h2 style="color:white">System Diagnostic</h2>
-    <button onclick="DebugApp.run()">▶ RUN DIAGNOSTIC SCAN</button>
-    <div id="logs"></div>
+    <div class="header">🔍 FILTER DEBUGGER</div>
+    
+    <button class="btn" onclick="Debug.run()">SCAN & EXPLAIN</button>
+    
+    <div id="results"></div>
 
 <script>
 const Config = {
     apiKey: "0f29a2f96e9dd4231cee515cc5ec52b0", 
-    apiBaseUrl: "https://v3.football.api-sports.io"
+    apiBaseUrl: "https://v3.football.api-sports.io",
+    // The exact list from your main app
+    leagues: [179,180,183,184, 39,40,45,48, 140,143, 135,137, 78,81, 61,66, 88,90, 253,188, 2,3,848],
+    minTime: 60,
+    minFouls: 2
 };
 
-const DebugApp = {
-    logEl: document.getElementById('logs'),
+const Debug = {
+    el: document.getElementById('results'),
     
-    log(msg, type='') {
-        const div = document.createElement('div');
-        div.className = `log-box ${type}`;
-        div.innerHTML = msg;
-        this.logEl.prepend(div);
-    },
-
     async run() {
-        this.logEl.innerHTML = ''; // Clear
-        this.log("1. fetching live matches...");
+        this.el.innerHTML = '<div style="text-align:center">Fetching global live feed...</div>';
         
         try {
-            // 1. GET ALL LIVE FIXTURES
+            // 1. Fetch ALL live
             const res = await fetch(`${Config.apiBaseUrl}/fixtures?live=all`, { 
                 headers: { "x-rapidapi-key": Config.apiKey, "x-rapidapi-host": "v3.football.api-sports.io" }
             });
             const json = await res.json();
-            
-            if(!json.response || json.response.length === 0) {
-                return this.log("API returned 0 live matches.", 'error');
-            }
+            const matches = json.response;
 
-            this.log(`2. Found ${json.response.length} live matches globaly.`);
-
-            // 2. CHECK SPECIFIC MATCHES (Limit to 5 to save bandwidth)
-            const matches = json.response.slice(0, 5); 
-            
-            for (const m of matches) {
-                await this.analyzeMatch(m);
-            }
-
-        } catch (e) {
-            this.log(`CRITICAL ERROR: ${e.message}`, 'error');
-        }
-    },
-
-    async analyzeMatch(m) {
-        const id = m.fixture.id;
-        const name = `${m.teams.home.name} vs ${m.teams.away.name}`;
-        const league = m.league.name;
-        
-        this.log(`Analyzing: ${name} (${league})...`);
-
-        try {
-            const res = await fetch(`${Config.apiBaseUrl}/fixtures?id=${id}`, { 
-                headers: { "x-rapidapi-key": Config.apiKey, "x-rapidapi-host": "v3.football.api-sports.io" }
-            });
-            const json = await res.json();
-            const data = json.response[0];
-
-            // CHECK 1: PLAYERS ARRAY
-            if (!data.players || data.players.length === 0) {
-                this.log(`❌ NO PLAYER STATS available for ${name}. \n(The API is tracking score, but not individual fouls for this league)`, 'error');
+            if(!matches || matches.length === 0) {
+                this.el.innerHTML = "API returned 0 live matches.";
                 return;
             }
 
-            // CHECK 2: STATS DATA
-            const homePlayers = data.players[0].players;
-            let foulCount = 0;
-            let nullCount = 0;
+            this.el.innerHTML = `<div>Found ${matches.length} live matches. Checking filters...</div><br>`;
 
-            homePlayers.forEach(p => {
-                if(p.statistics[0].fouls.committed > 0) foulCount++;
-                if(p.statistics[0].fouls.committed === null) nullCount++;
+            // 2. Fetch stats for top 20 matches (to capture the one you want)
+            // We sort by league name to try and find 'Serie A' or 'Premiership' matches first
+            matches.sort((a,b) => a.league.name.localeCompare(b.league.name));
+            
+            // Limit to avoid quota hit, but take enough to find Bologna
+            const subset = matches.slice(0, 30); 
+
+            // Fetch details in parallel
+            const details = await Promise.all(subset.map(async m => {
+                const r = await fetch(`${Config.apiBaseUrl}/fixtures?id=${m.fixture.id}`, { 
+                    headers: { "x-rapidapi-key": Config.apiKey, "x-rapidapi-host": "v3.football.api-sports.io" }
+                });
+                const j = await r.json();
+                return j.response[0];
+            }));
+
+            // 3. ANALYZE EACH
+            let html = '';
+            
+            details.forEach(game => {
+                if(!game) return;
+
+                const name = `${game.teams.home.name} v ${game.teams.away.name}`;
+                const leagueId = game.league.id;
+                const leagueName = game.league.name;
+                const time = game.fixture.status.elapsed;
+                
+                // DATA CHECK
+                let maxFouls = 0;
+                let playerWithMax = "None";
+                
+                const players = [...game.players[0].players, ...game.players[1].players];
+                players.forEach(p => {
+                    const f = p.statistics[0].fouls.committed || 0;
+                    if(f > maxFouls) { maxFouls = f; playerWithMax = p.player.name; }
+                });
+
+                // FILTER LOGIC DIAGNOSIS
+                let status = "VISIBLE ✅";
+                let reason = "";
+                let css = "visible";
+
+                // Check 1: League
+                if (!Config.leagues.includes(leagueId)) {
+                    status = "HIDDEN ❌";
+                    reason = `League ID ${leagueId} not in list.`;
+                    css = "hidden";
+                }
+                // Check 2: Time
+                else if (time < Config.minTime) {
+                    status = "HIDDEN ❌";
+                    reason = `Time is ${time}' (Need ${Config.minTime}').`;
+                    css = "hidden";
+                }
+                // Check 3: Fouls
+                else if (maxFouls < Config.minFouls) {
+                    status = "HIDDEN ❌";
+                    reason = `Max fouls is ${maxFouls} (Need ${Config.minFouls}).`;
+                    css = "hidden";
+                } else {
+                    reason = `Target: ${playerWithMax} (${maxFouls} fouls)`;
+                }
+
+                // Append Card
+                html += `
+                <div class="card ${css}">
+                    <div style="font-size:1rem; font-weight:bold; color:white;">${name}</div>
+                    <div class="meta">${leagueName} | <span class="raw-id">ID: ${leagueId}</span> | Time: ${time}'</div>
+                    <div class="${css === 'visible' ? 'success' : 'reason'}">${status} <br>${reason}</div>
+                </div>`;
             });
 
-            if (foulCount === 0 && nullCount > 0) {
-                this.log(`⚠️ ${name}: Players found, but ALL foul stats are NULL. \n(League may not support live foul tracking)`, 'warn');
-            } else {
-                this.log(`✅ ${name}: OK! Found ${foulCount} players with fouls.`);
-                // Print one example player
-                const ex = homePlayers.find(p => p.statistics[0].fouls.committed > 0);
-                if(ex) this.log(`Example: ${ex.player.name} has ${ex.statistics[0].fouls.committed} fouls.`);
-            }
+            this.el.innerHTML += html;
 
         } catch (e) {
-            this.log(`Error reading match ${name}: ${e.message}`, 'error');
+            this.el.innerHTML = `<div style="color:red">Error: ${e.message}</div>`;
         }
     }
 };
