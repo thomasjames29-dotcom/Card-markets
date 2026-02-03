@@ -29,8 +29,8 @@
         }
         .scanner-btn:active { transform: scale(0.98); }
 
-        /* TEST TOGGLE */
-        .test-box {
+        /* TOGGLE BOX */
+        .toggle-box {
             background: #2a2a2a; padding: 12px; border-radius: 8px; margin-bottom: 20px;
             display: flex; align-items: center; gap: 15px; border: 1px solid #444;
         }
@@ -85,16 +85,16 @@
             <span>Start Live Scanner</span> <span>📡</span>
         </button>
 
-        <div class="test-box">
-            <input type="checkbox" id="testMode" class="toggle-switch">
+        <div class="toggle-box">
+            <input type="checkbox" id="relaxedMode" class="toggle-switch">
             <div>
-                <strong style="color:white; display:block;">Test Mode</strong>
-                <span style="font-size:0.8rem; color:#888;">Ignore 60min rule (Show ALL matches)</span>
+                <strong style="color:white; display:block;">Early Warning Mode</strong>
+                <span style="font-size:0.8rem; color:#888;">Show 0+ Mins & 1+ Foul (Selected Leagues)</span>
             </div>
         </div>
         
         <div style="background:#222; padding:15px; border-radius:8px; color:#aaa; font-size:0.9rem; line-height:1.6;">
-            <strong>Scanner Config:</strong><br>
+            <strong>Default Rules:</strong><br>
             • 🌍 <strong>Coverage:</strong> Top 5 Leagues + Scotland + Cups<br>
             • ⏱️ <strong>Trigger:</strong> Match Time > 60:00<br>
             • 🛑 <strong>Filter:</strong> Player Fouls ≥ 2<br>
@@ -112,8 +112,8 @@
         <div id="scannerGrid" class="grid"></div>
         
         <div id="emptyState" style="display:none; text-align:center; color:#555; padding:50px 20px;">
-            <h3>Scanning...</h3>
-            <p>No players match the criteria right now.</p>
+            <h3>Scanning Live Matches...</h3>
+            <p id="emptyMsg">Waiting for players to match criteria.</p>
         </div>
 
         <button class="fab" onclick="App.stopScanner()">STOP</button>
@@ -125,8 +125,8 @@ const Config = {
     apiBaseUrl: "https://v3.football.api-sports.io",
     // Leagues: Scotland, Eng, Spain, Italy, Ger, Fra, Ned, USA, Aus, Cups
     leagues: [179,180,183,184, 39,40,45,48, 140,143, 135,137, 78,81, 61,66, 88,90, 253,188, 2,3,848],
-    minTime: 60, // 60th minute
-    minFouls: 2  // 2 fouls
+    minTime: 60, // Default Strict
+    minFouls: 2  // Default Strict
 };
 
 const AudioAlert = {
@@ -159,12 +159,12 @@ const Data = {
 };
 
 const App = {
-    state: { isScanning: false, tracked: new Set(), testMode: false },
+    state: { isScanning: false, tracked: new Set(), relaxedMode: false },
     timer: null,
 
     startScanner() {
-        this.state.testMode = document.getElementById('testMode').checked;
-        AudioAlert.play(); // Prime audio
+        this.state.relaxedMode = document.getElementById('relaxedMode').checked;
+        AudioAlert.play(); 
         
         this.state.isScanning = true;
         document.getElementById('view-home').classList.remove('active');
@@ -189,7 +189,6 @@ const App = {
         else bets.push(id);
         localStorage.setItem('placedBets', JSON.stringify(bets));
         
-        // Instant UI Update
         const card = document.getElementById(`card-${id}`);
         const btn = document.getElementById(`btn-${id}`);
         if(card) {
@@ -202,25 +201,27 @@ const App = {
         if (!this.state.isScanning) return;
         this.status("Scanning active matches...");
 
+        // Determine Thresholds based on mode
+        const timeLimit = this.state.relaxedMode ? 0 : Config.minTime;
+        const foulLimit = this.state.relaxedMode ? 1 : Config.minFouls;
+
         const live = await Data.getLive();
         
-        // FILTER MATCHES
+        // FILTER: Keep Leagues strict, but adjust Time based on toggle
         const matches = live.filter(m => {
-            if (this.state.testMode) return true; // Test Mode = Show All
-            return Config.leagues.includes(m.league.id) && m.fixture.status.elapsed >= Config.minTime;
+            return Config.leagues.includes(m.league.id) && (m.fixture.status.elapsed || 0) >= timeLimit;
         });
 
         if (matches.length === 0) {
-            this.status(this.state.testMode ? "No live games found anywhere." : "No matches > 60 mins found.");
+            const modeText = this.state.relaxedMode ? "Start of match (0+ mins)" : "60+ mins";
+            this.status(`No matches found > ${modeText}.`);
             this.render([]);
             return;
         }
 
         this.status(`Analyzing ${matches.length} matches...`);
         
-        // Limit API calls in test mode to save quota
-        const batch = this.state.testMode ? matches.slice(0, 15) : matches;
-        const details = await Promise.all(batch.map(m => Data.getStats(m.fixture.id)));
+        const details = await Promise.all(matches.map(m => Data.getStats(m.fixture.id)));
 
         let risks = [];
         let newAlert = false;
@@ -230,17 +231,15 @@ const App = {
             const time = game.fixture.status.elapsed;
             const league = game.league.name;
             const isCup = league.toLowerCase().includes('cup') || league.toLowerCase().includes('pokal');
-            
-            // Subs check
             const subbed = new Set();
             (game.events||[]).forEach(e => { if(e.type==='subst') subbed.add(e.player.id); });
 
             [...game.players[0].players, ...game.players[1].players].forEach(p => {
                 const stats = p.statistics[0];
                 const fouls = stats.fouls.committed || 0;
-                const threshold = this.state.testMode ? 0 : Config.minFouls; // Test mode = 0 fouls OK
-
-                if (fouls >= threshold && !subbed.has(p.player.id)) {
+                
+                // FILTER: Adjust Fouls based on toggle
+                if (fouls >= foulLimit && !subbed.has(p.player.id)) {
                     const id = p.player.id;
                     if (!this.state.tracked.has(id)) {
                         this.state.tracked.add(id);
@@ -275,9 +274,15 @@ const App = {
     render(players) {
         const grid = document.getElementById('scannerGrid');
         const empty = document.getElementById('emptyState');
-        
+        const emptyMsg = document.getElementById('emptyMsg');
+
         if (players.length === 0) {
-            grid.innerHTML = ''; empty.style.display = 'block'; return;
+            grid.innerHTML = ''; 
+            empty.style.display = 'block'; 
+            emptyMsg.innerText = this.state.relaxedMode 
+                ? "No players with 1+ foul yet." 
+                : "No players with 2+ fouls over 60 mins.";
+            return;
         }
         empty.style.display = 'none';
 
