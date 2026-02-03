@@ -84,7 +84,7 @@
         .bet-placed .bet-toggle { background: #00ff88; color: black; border-color: #00ff88; }
 
         /* STATUS & FAB */
-        .status-bar { text-align: center; color: #666; font-size: 0.9rem; margin-bottom: 15px; }
+        .status-bar { text-align: center; color: #00ff88; font-size: 0.9rem; margin-bottom: 15px; min-height: 40px;}
         .fab { position: fixed; bottom: 20px; right: 20px; background: var(--danger); color: white; width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.5); border: none; z-index: 100; cursor: pointer;}
         .back-fab { position: fixed; bottom: 20px; left: 20px; background: #333; color: white; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); border: none; z-index: 100; cursor: pointer;}
 
@@ -116,10 +116,9 @@
         </div>
         
         <div style="background:#222; padding:15px; border-radius:8px; color:#aaa; font-size:0.9rem; line-height:1.6;">
-            <strong>Default Rules:</strong><br>
-            • 🌍 <strong>Coverage:</strong> Top 5 + Scotland + Cups<br>
-            • ⏱️ <strong>Trigger:</strong> Match Time > 60:00<br>
-            • 🛑 <strong>Filter:</strong> Player Fouls ≥ 2<br>
+            <strong>Scanner Config:</strong><br>
+            • 🌍 <strong>Monitoring:</strong> Top 5 + Scotland + Cups<br>
+            • ⚠️ <strong>Note:</strong> App scans one-by-one for stability.<br>
             • 🎵 <strong>Audio:</strong> Alert on new risk
         </div>
 
@@ -190,7 +189,7 @@ const Data = {
 };
 
 const App = {
-    state: { isScanning: false, tracked: new Set(), relaxedMode: false },
+    state: { isScanning: false, tracked: new Set(), relaxedMode: false, currentRisks: [], currentNoData: [] },
     timer: null,
 
     goHome() {
@@ -238,8 +237,14 @@ const App = {
         this.state.isScanning = true;
         document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
         document.getElementById('view-scanner').classList.add('active');
-        this.scan();
-        this.timer = setInterval(() => this.scan(), 60000);
+        
+        // Reset buffers
+        this.state.currentRisks = [];
+        this.state.currentNoData = [];
+        
+        this.scanCycle();
+        // Set refresh to 90 seconds to allow for sequential scan
+        this.timer = setInterval(() => this.scanCycle(), 90000);
     },
 
     stopScanner() {
@@ -262,17 +267,15 @@ const App = {
         }
     },
 
-    async scan() {
+    async scanCycle() {
         if (!this.state.isScanning) return;
-        this.status("Scanning active matches...");
+        this.status("Fetching live match list...");
 
         const timeLimit = this.state.relaxedMode ? 0 : Config.minTime;
         const foulLimit = this.state.relaxedMode ? 1 : Config.minFouls;
         
-        // 1. Get Live Matches
         const live = await Data.getLive();
         
-        // 2. Local Filter (Only Leagues + Time)
         const matches = live.filter(m => {
             return Config.leagues.includes(m.league.id) && (m.fixture.status.elapsed || 0) >= timeLimit;
         });
@@ -284,77 +287,86 @@ const App = {
             return;
         }
 
-        this.status(`Analyzing ${matches.length} matches...`);
+        // We process SEQUENTIALLY to prevent "Failed to fetch" error
+        this.state.currentRisks = [];
+        this.state.currentNoData = [];
         
-        // 3. Sequential Fetching (Fixes Network Crash)
-        // We fetch detailed stats in small batches or one-by-one to be safe
-        let risks = [];
-        let noDataMatches = [];
-        let newAlert = false;
-
-        // Process in chunks of 3 to allow parallel but prevent flooding
-        for (let i = 0; i < matches.length; i += 3) {
-            const chunk = matches.slice(i, i + 3);
-            const promises = chunk.map(m => fetch(`${Config.apiBaseUrl}/fixtures?id=${m.fixture.id}`, { headers: Data.headers }).then(r => r.json()));
+        for (let i = 0; i < matches.length; i++) {
+            if (!this.state.isScanning) break; // Check cancel
+            const m = matches[i];
+            
+            this.status(`Scanning Match ${i+1} of ${matches.length}:<br><span style="color:white">${m.teams.home.name} vs ${m.teams.away.name}</span>`);
             
             try {
-                const results = await Promise.all(promises);
+                const res = await fetch(`${Config.apiBaseUrl}/fixtures?id=${m.fixture.id}`, { headers: Data.headers });
+                const json = await res.json();
+                const game = json.response[0];
                 
-                results.forEach(json => {
-                    const game = json.response[0];
-                    if (!game) return;
-
-                    const time = game.fixture.status.elapsed;
-                    const league = game.league.name;
-                    const isCup = league.toLowerCase().includes('cup') || league.toLowerCase().includes('pokal');
-                    const subbed = new Set();
-                    (game.events||[]).forEach(e => { if(e.type==='subst') subbed.add(e.player.id); });
-
-                    let totalFoulsInMatch = 0;
-                    
-                    if(game.players && game.players.length > 0) {
-                        const players = [...game.players[0].players, ...game.players[1].players];
-                        players.forEach(p => {
-                            const f = p.statistics[0].fouls.committed || 0;
-                            totalFoulsInMatch += f;
-                            
-                            if (f >= foulLimit && !subbed.has(p.player.id)) {
-                                const id = p.player.id;
-                                if (!this.state.tracked.has(id)) {
-                                    this.state.tracked.add(id);
-                                    newAlert = true;
-                                    p.isNew = true;
-                                }
-                                risks.push({
-                                    id: id,
-                                    name: p.player.name,
-                                    team: p.statistics[0].team.name,
-                                    match: `${game.teams.home.name} v ${game.teams.away.name}`,
-                                    league: league,
-                                    isCup: isCup,
-                                    time: time,
-                                    fouls: f,
-                                    tackles: p.statistics[0].tackles.total || 0,
-                                    booked: p.statistics[0].cards.yellow > 0,
-                                    isNew: p.isNew
-                                });
-                            }
-                        });
-                    }
-
-                    if (totalFoulsInMatch === 0) {
-                        noDataMatches.push(`${game.teams.home.name} v ${game.teams.away.name}`);
-                    }
-                });
+                if (game) {
+                    this.analyzeGame(game, foulLimit);
+                }
             } catch (e) {
-                console.error("Batch error", e);
+                console.error("Fetch error", e);
             }
+            
+            // Re-render after every match so user sees progress
+            this.render(this.state.currentRisks, this.state.currentNoData);
         }
 
-        risks.sort((a,b) => b.fouls - a.fouls);
-        if(newAlert) AudioAlert.play();
-        this.render(risks, noDataMatches);
-        this.status(`Found ${risks.length} targets.`);
+        this.status(`Scan Complete. Waiting for next cycle...`);
+    },
+
+    analyzeGame(game, foulLimit) {
+        const time = game.fixture.status.elapsed;
+        const league = game.league.name;
+        const isCup = league.toLowerCase().includes('cup') || league.toLowerCase().includes('pokal');
+        const subbed = new Set();
+        (game.events||[]).forEach(e => { if(e.type==='subst') subbed.add(e.player.id); });
+
+        let totalFoulsInMatch = 0;
+        let foundPlayers = false;
+
+        // SAFE GUARD: Check if players exist
+        const playersList = [];
+        if(game.players && game.players[0]) playersList.push(...game.players[0].players);
+        if(game.players && game.players[1]) playersList.push(...game.players[1].players);
+
+        playersList.forEach(p => {
+            const f = p.statistics[0].fouls.committed || 0;
+            totalFoulsInMatch += f;
+            
+            if (f >= foulLimit && !subbed.has(p.player.id)) {
+                const id = p.player.id;
+                if (!this.state.tracked.has(id)) {
+                    this.state.tracked.add(id);
+                    p.isNew = true;
+                    // Play sound only once per scan cycle per player
+                    AudioAlert.play();
+                }
+                
+                // Add to current risks if not already there
+                if(!this.state.currentRisks.find(r => r.id === id)) {
+                    this.state.currentRisks.push({
+                        id: id,
+                        name: p.player.name,
+                        team: p.statistics[0].team.name,
+                        match: `${game.teams.home.name} v ${game.teams.away.name}`,
+                        league: league,
+                        isCup: isCup,
+                        time: time,
+                        fouls: f,
+                        tackles: p.statistics[0].tackles.total || 0,
+                        booked: p.statistics[0].cards.yellow > 0,
+                        isNew: p.isNew
+                    });
+                }
+                foundPlayers = true;
+            }
+        });
+
+        if (totalFoulsInMatch === 0) {
+             this.state.currentNoData.push(`${game.teams.home.name} v ${game.teams.away.name}`);
+        }
     },
 
     render(players, noDataMatches) {
@@ -388,6 +400,9 @@ const App = {
         }
         empty.style.display = 'none';
 
+        // Sort by fouls
+        players.sort((a,b) => b.fouls - a.fouls);
+
         grid.innerHTML = players.map(p => {
             const placed = this.isPlaced(p.id);
             return `
@@ -416,7 +431,7 @@ const App = {
         }).join('');
     },
 
-    status(msg) { document.getElementById('scanStatus').innerText = msg; }
+    status(msg) { document.getElementById('scanStatus').innerHTML = msg; }
 };
 
 setInterval(() => document.getElementById('clock').innerText = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), 1000);
