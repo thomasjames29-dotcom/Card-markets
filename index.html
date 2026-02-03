@@ -4,391 +4,111 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link rel="manifest" href="manifest.json">
-    <title>Foul Watch Pro</title>
+    <title>Foul Watch DEBUG</title>
     <style>
-        :root { --bg: #121212; --card: #1e1e1e; --text: #e0e0e0; --accent: #00ff88; --danger: #ff4444; --placed: #006633; --secondary: #333; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; padding-bottom: 80px;}
-        
-        /* HEADER */
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 15px; }
-        .h1 { margin: 0; font-size: 1.2rem; color: var(--accent); font-weight: bold; text-transform:uppercase; letter-spacing:1px; }
-
-        /* VIEWS */
-        .view-section { display: none; animation: fadeIn 0.3s ease; }
-        .view-section.active { display: block; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-
-        /* MENU BUTTONS */
-        .menu-btn {
-            background: var(--card); color: white; border: 1px solid #333; 
-            padding: 20px; width: 100%; border-radius: 12px; 
-            font-size: 1.1rem; font-weight: bold; margin-bottom: 15px; 
-            cursor: pointer; display: flex; justify-content: space-between; align-items: center;
-            transition: background 0.2s;
-        }
-        .menu-btn.primary { background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%); color: black; border: none; box-shadow: 0 4px 15px rgba(0, 255, 136, 0.3); }
-        .menu-btn:active { transform: scale(0.98); }
-
-        /* TOGGLE BOX */
-        .toggle-box {
-            background: #2a2a2a; padding: 12px; border-radius: 8px; margin-bottom: 20px;
-            display: flex; align-items: center; gap: 15px; border: 1px solid #444;
-        }
-        .toggle-switch { transform: scale(1.3); accent-color: var(--accent); cursor: pointer; }
-
-        /* GRID & CARDS */
-        .grid { display: grid; gap: 10px; }
-        
-        /* PLAYER CARD (Scanner) */
-        .player-card { 
-            background: var(--card); padding: 15px; border-radius: 8px; 
-            border-left: 5px solid #555; position: relative; margin-bottom: 10px; 
-            transition: all 0.3s ease; 
-        }
-        .player-card.new-alert { animation: flash 2s infinite; border-left-color: var(--danger); }
-        .player-card.bet-placed { background: #0d2b1a; border-left-color: #00ff88 !important; opacity: 0.6; }
-        
-        @keyframes flash { 0% { background: var(--card); } 50% { background: #3a1a1a; } 100% { background: var(--card); } }
-
-        /* FIXTURE CARD (Schedule) */
-        .fixture-card {
-            background: var(--card); padding: 15px; border-radius: 8px; 
-            border: 1px solid #333; display: flex; justify-content: space-between; align-items: center;
-        }
-        .fixture-time { font-size: 0.9rem; color: #888; width: 60px; text-align: center; border-right: 1px solid #333; margin-right: 15px; }
-        .fixture-info { flex-grow: 1; }
-        .fixture-league { font-size: 0.7rem; color: #666; text-transform: uppercase; margin-bottom: 4px; }
-        .fixture-vs { font-weight: bold; font-size: 1rem; color: white; }
-        .live-badge { background: red; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; }
-        .fin-badge { background: #333; color: #aaa; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; }
-
-        /* TYPOGRAPHY */
-        .stat-big { font-size: 1.8rem; font-weight: bold; color: var(--accent); line-height: 1; }
-        .stat-label { font-size: 0.7rem; color: #888; text-transform: uppercase; }
-        .team-name { font-size: 1rem; color: #fff; font-weight: bold; margin-bottom: 4px; }
-        .match-tag { font-size: 0.75rem; color: #aaa; background:#333; padding:2px 6px; border-radius:4px; margin-right:5px;}
-        .cup-badge { background: #7c4dff; color: white; padding: 2px 5px; border-radius: 3px; font-size: 0.65rem; vertical-align: middle; text-transform:uppercase;}
-
-        /* BET BUTTON */
-        .bet-toggle { 
-            margin-top: 15px; width: 100%; padding: 10px; border-radius: 6px; 
-            border: 1px solid #444; background: transparent; color: #aaa; 
-            cursor: pointer; font-weight: bold; font-size: 0.8rem; text-transform:uppercase;
-        }
-        .bet-placed .bet-toggle { background: #00ff88; color: black; border-color: #00ff88; }
-
-        /* STATUS & FAB */
-        .status-bar { text-align: center; color: #666; font-size: 0.9rem; margin-bottom: 15px; }
-        .fab { position: fixed; bottom: 20px; right: 20px; background: var(--danger); color: white; width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.5); border: none; z-index: 100; cursor: pointer;}
-        .back-fab { position: fixed; bottom: 20px; left: 20px; background: #333; color: white; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); border: none; z-index: 100; cursor: pointer;}
-
+        body { background: #121212; color: #00ff88; font-family: monospace; padding: 15px; font-size: 0.8rem; }
+        .log-box { background: #000; border: 1px solid #333; padding: 10px; margin-bottom: 10px; border-radius: 5px; white-space: pre-wrap; word-wrap: break-word; }
+        .match-header { color: white; font-weight: bold; font-size: 1rem; border-bottom: 1px solid #333; padding-bottom: 5px; margin-bottom: 5px; }
+        .error { color: #ff4444; }
+        .warn { color: orange; }
+        button { background: #333; color: white; border: none; padding: 15px; width: 100%; font-size: 1rem; margin-bottom: 20px; border-radius: 8px; }
     </style>
 </head>
 <body>
 
-    <div class="header">
-        <span class="h1">Foul Watch Pro</span>
-        <div id="clock" style="font-size:0.9rem; color:#666;">--:--</div>
-    </div>
-
-    <div id="view-home" class="view-section active">
-        
-        <button class="menu-btn primary" onclick="App.startScanner()">
-            <span>Start Live Scanner</span> <span>📡</span>
-        </button>
-
-        <button class="menu-btn" onclick="App.showSchedule()">
-            <span>Today's Schedule</span> <span>📅</span>
-        </button>
-
-        <div class="toggle-box">
-            <input type="checkbox" id="relaxedMode" class="toggle-switch">
-            <div>
-                <strong style="color:white; display:block;">Early Warning Mode</strong>
-                <span style="font-size:0.8rem; color:#888;">Show 0+ Mins & 1+ Foul (Selected Leagues)</span>
-            </div>
-        </div>
-        
-        <div style="background:#222; padding:15px; border-radius:8px; color:#aaa; font-size:0.9rem; line-height:1.6;">
-            <strong>Default Rules:</strong><br>
-            • 🌍 <strong>Coverage:</strong> Top 5 + Scotland + Cups<br>
-            • ⏱️ <strong>Trigger:</strong> Match Time > 60:00<br>
-            • 🛑 <strong>Filter:</strong> Player Fouls ≥ 2<br>
-            • 🎵 <strong>Audio:</strong> Alert on new risk
-        </div>
-
-        <div style="margin-top:20px; text-align:center;">
-            <button onclick="localStorage.removeItem('placedBets'); alert('History Cleared');" style="background:transparent; color:#555; border:1px solid #333; padding:10px 20px; border-radius:20px;">Clear Bet History</button>
-        </div>
-    </div>
-
-    <div id="view-scanner" class="view-section">
-        <div id="scanStatus" class="status-bar">Initializing...</div>
-        <div id="scannerGrid" class="grid"></div>
-        
-        <div id="emptyState" style="display:none; text-align:center; color:#555; padding:50px 20px;">
-            <h3>Scanning...</h3>
-            <p id="emptyMsg">Waiting for players...</p>
-        </div>
-        <button class="fab" onclick="App.stopScanner()">STOP</button>
-    </div>
-
-    <div id="view-schedule" class="view-section">
-        <h3 style="color:white; margin-top:0;">Today's Matches</h3>
-        <div id="scheduleGrid" class="grid"></div>
-        <button class="back-fab" onclick="App.goHome()">←</button>
-    </div>
+    <h2 style="color:white">System Diagnostic</h2>
+    <button onclick="DebugApp.run()">▶ RUN DIAGNOSTIC SCAN</button>
+    <div id="logs"></div>
 
 <script>
 const Config = {
     apiKey: "0f29a2f96e9dd4231cee515cc5ec52b0", 
-    apiBaseUrl: "https://v3.football.api-sports.io",
-    // Leagues: Scotland, Eng, Spain, Italy, Ger, Fra, Ned, USA, Aus, Cups
-    leagues: [179,180,183,184, 39,40,45,48, 140,143, 135,137, 78,81, 61,66, 88,90, 253,188, 2,3,848],
-    minTime: 60, 
-    minFouls: 2  
+    apiBaseUrl: "https://v3.football.api-sports.io"
 };
 
-const AudioAlert = {
-    ctx: null,
-    play() {
-        if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-        if (this.ctx.state === 'suspended') this.ctx.resume();
-        const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
-        o.connect(g); g.connect(this.ctx.destination);
-        o.frequency.value = 880; g.gain.value = 0.1;
-        o.start(); o.stop(this.ctx.currentTime + 0.2);
-    }
-};
-
-const Data = {
-    headers: { "x-rapidapi-key": Config.apiKey, "x-rapidapi-host": "v3.football.api-sports.io" },
-    async getLive() {
-        try {
-            const res = await fetch(`${Config.apiBaseUrl}/fixtures?live=all`, { headers: this.headers });
-            return (await res.json()).response;
-        } catch (e) { return []; }
-    },
-    async getStats(id) {
-        try {
-            const res = await fetch(`${Config.apiBaseUrl}/fixtures?id=${id}`, { headers: this.headers });
-            return (await res.json()).response[0];
-        } catch (e) { return null; }
-    },
-    async getDailyFixtures() {
-        try {
-            const today = new Date().toISOString().split('T')[0];
-            const res = await fetch(`${Config.apiBaseUrl}/fixtures?date=${today}`, { headers: this.headers });
-            return (await res.json()).response;
-        } catch (e) { return []; }
-    }
-};
-
-const App = {
-    state: { isScanning: false, tracked: new Set(), relaxedMode: false },
-    timer: null,
-
-    // --- NAVIGATION ---
-    goHome() {
-        document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
-        document.getElementById('view-home').classList.add('active');
-    },
-
-    // --- SCHEDULE ---
-    async showSchedule() {
-        document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
-        document.getElementById('view-schedule').classList.add('active');
-        document.getElementById('scheduleGrid').innerHTML = '<div style="text-align:center; color:#666; padding:20px">Loading today\'s games...</div>';
-
-        const allFixtures = await Data.getDailyFixtures();
-        
-        // Filter by League Config
-        const relevant = allFixtures.filter(f => Config.leagues.includes(f.league.id));
-        
-        // Sort by Time
-        relevant.sort((a,b) => new Date(a.fixture.date) - new Date(b.fixture.date));
-
-        const grid = document.getElementById('scheduleGrid');
-        if(relevant.length === 0) {
-            grid.innerHTML = '<div style="text-align:center; color:#666; padding:20px">No matches in tracked leagues today.</div>';
-            return;
-        }
-
-        grid.innerHTML = relevant.map(f => {
-            const date = new Date(f.fixture.date);
-            const timeStr = date.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-            const status = f.fixture.status.short;
-            let statusBadge = "";
-
-            if(['1H','2H','HT','ET','P'].includes(status)) statusBadge = `<span class="live-badge">LIVE</span>`;
-            else if(['FT','AET','PEN'].includes(status)) statusBadge = `<span class="fin-badge">FT</span>`;
-            
-            return `
-            <div class="fixture-card">
-                <div class="fixture-time">
-                    <div>${timeStr}</div>
-                    ${statusBadge}
-                </div>
-                <div class="fixture-info">
-                    <div class="fixture-league">${f.league.name}</div>
-                    <div class="fixture-vs">${f.teams.home.name} v ${f.teams.away.name}</div>
-                </div>
-            </div>
-            `;
-        }).join('');
-    },
-
-    // --- SCANNER ---
-    startScanner() {
-        this.state.relaxedMode = document.getElementById('relaxedMode').checked;
-        AudioAlert.play();
-        
-        this.state.isScanning = true;
-        document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
-        document.getElementById('view-scanner').classList.add('active');
-        
-        this.scan();
-        this.timer = setInterval(() => this.scan(), 60000);
-    },
-
-    stopScanner() {
-        this.state.isScanning = false;
-        clearInterval(this.timer);
-        this.goHome();
-    },
-
-    isPlaced(id) { return JSON.parse(localStorage.getItem('placedBets')||'[]').includes(id); },
+const DebugApp = {
+    logEl: document.getElementById('logs'),
     
-    toggleBet(id) {
-        let bets = JSON.parse(localStorage.getItem('placedBets')||'[]');
-        if(bets.includes(id)) bets = bets.filter(b => b !== id);
-        else bets.push(id);
-        localStorage.setItem('placedBets', JSON.stringify(bets));
-        
-        const card = document.getElementById(`card-${id}`);
-        const btn = document.getElementById(`btn-${id}`);
-        if(card) {
-            card.classList.toggle('bet-placed');
-            btn.innerText = card.classList.contains('bet-placed') ? "✅ BET PLACED" : "Mark as Placed";
-        }
+    log(msg, type='') {
+        const div = document.createElement('div');
+        div.className = `log-box ${type}`;
+        div.innerHTML = msg;
+        this.logEl.prepend(div);
     },
 
-    async scan() {
-        if (!this.state.isScanning) return;
-        this.status("Scanning active matches...");
-
-        const timeLimit = this.state.relaxedMode ? 0 : Config.minTime;
-        const foulLimit = this.state.relaxedMode ? 1 : Config.minFouls;
-
-        const live = await Data.getLive();
+    async run() {
+        this.logEl.innerHTML = ''; // Clear
+        this.log("1. fetching live matches...");
         
-        const matches = live.filter(m => {
-            return Config.leagues.includes(m.league.id) && (m.fixture.status.elapsed || 0) >= timeLimit;
-        });
-
-        if (matches.length === 0) {
-            const modeText = this.state.relaxedMode ? "Start (0+ mins)" : "60+ mins";
-            this.status(`No matches found > ${modeText}.`);
-            this.render([]);
-            return;
-        }
-
-        this.status(`Analyzing ${matches.length} matches...`);
-        const details = await Promise.all(matches.map(m => Data.getStats(m.fixture.id)));
-
-        let risks = [];
-        let newAlert = false;
-
-        details.forEach(game => {
-            if (!game) return;
-            const time = game.fixture.status.elapsed;
-            const league = game.league.name;
-            const isCup = league.toLowerCase().includes('cup') || league.toLowerCase().includes('pokal');
-            const subbed = new Set();
-            (game.events||[]).forEach(e => { if(e.type==='subst') subbed.add(e.player.id); });
-
-            [...game.players[0].players, ...game.players[1].players].forEach(p => {
-                const stats = p.statistics[0];
-                const fouls = stats.fouls.committed || 0;
-                
-                if (fouls >= foulLimit && !subbed.has(p.player.id)) {
-                    const id = p.player.id;
-                    if (!this.state.tracked.has(id)) {
-                        this.state.tracked.add(id);
-                        newAlert = true;
-                        p.isNew = true;
-                    }
-
-                    risks.push({
-                        id: id,
-                        name: p.player.name,
-                        team: stats.team.name,
-                        match: `${game.teams.home.name} v ${game.teams.away.name}`,
-                        league: league,
-                        isCup: isCup,
-                        time: time,
-                        fouls: fouls,
-                        tackles: stats.tackles.total || 0,
-                        booked: stats.cards.yellow > 0,
-                        isNew: p.isNew
-                    });
-                }
+        try {
+            // 1. GET ALL LIVE FIXTURES
+            const res = await fetch(`${Config.apiBaseUrl}/fixtures?live=all`, { 
+                headers: { "x-rapidapi-key": Config.apiKey, "x-rapidapi-host": "v3.football.api-sports.io" }
             });
-        });
+            const json = await res.json();
+            
+            if(!json.response || json.response.length === 0) {
+                return this.log("API returned 0 live matches.", 'error');
+            }
 
-        risks.sort((a,b) => b.fouls - a.fouls);
-        if(newAlert) AudioAlert.play();
-        this.render(risks);
-        this.status(`Found ${risks.length} targets.`);
-    },
+            this.log(`2. Found ${json.response.length} live matches globaly.`);
 
-    render(players) {
-        const grid = document.getElementById('scannerGrid');
-        const empty = document.getElementById('emptyState');
-        const emptyMsg = document.getElementById('emptyMsg');
+            // 2. CHECK SPECIFIC MATCHES (Limit to 5 to save bandwidth)
+            const matches = json.response.slice(0, 5); 
+            
+            for (const m of matches) {
+                await this.analyzeMatch(m);
+            }
 
-        if (players.length === 0) {
-            grid.innerHTML = ''; 
-            empty.style.display = 'block'; 
-            emptyMsg.innerText = this.state.relaxedMode 
-                ? "No players with 1+ foul yet." 
-                : "No players with 2+ fouls over 60 mins.";
-            return;
+        } catch (e) {
+            this.log(`CRITICAL ERROR: ${e.message}`, 'error');
         }
-        empty.style.display = 'none';
-
-        grid.innerHTML = players.map(p => {
-            const placed = this.isPlaced(p.id);
-            return `
-            <div id="card-${p.id}" class="player-card ${p.isNew?'new-alert':''} ${placed?'bet-placed':''}" style="border-left-color:${p.booked?'#ffbb00':'#ff4444'}">
-                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                    <div>
-                        <div class="team-name">${p.name} <span style="font-weight:normal; opacity:0.7">(${p.team})</span></div>
-                        ${p.isCup ? '<span class="cup-badge">CUP GAME</span>' : ''}
-                        <span class="match-tag">${p.time}'</span>
-                        <span class="match-tag" style="background:transparent; padding:0; color:#888">${p.match}</span>
-                    </div>
-                    <div style="text-align:center; min-width:50px;">
-                        <div class="stat-big">${p.fouls}</div>
-                        <div class="stat-label">Fouls</div>
-                    </div>
-                </div>
-                <div style="margin-top:10px; display:flex; gap:15px; font-size:0.8rem; color:#aaa;">
-                    <span>Tackles: <b style="color:white">${p.tackles}</b></span>
-                    <span>${p.booked ? '🟨 Carded' : '⚠️ No Card'}</span>
-                </div>
-                <button id="btn-${p.id}" class="bet-toggle" onclick="App.toggleBet(${p.id})">
-                    ${placed ? '✅ BET PLACED' : 'Mark as Placed'}
-                </button>
-            </div>
-            `;
-        }).join('');
     },
 
-    status(msg) { document.getElementById('scanStatus').innerText = msg; }
-};
+    async analyzeMatch(m) {
+        const id = m.fixture.id;
+        const name = `${m.teams.home.name} vs ${m.teams.away.name}`;
+        const league = m.league.name;
+        
+        this.log(`Analyzing: ${name} (${league})...`);
 
-setInterval(() => document.getElementById('clock').innerText = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), 1000);
+        try {
+            const res = await fetch(`${Config.apiBaseUrl}/fixtures?id=${id}`, { 
+                headers: { "x-rapidapi-key": Config.apiKey, "x-rapidapi-host": "v3.football.api-sports.io" }
+            });
+            const json = await res.json();
+            const data = json.response[0];
+
+            // CHECK 1: PLAYERS ARRAY
+            if (!data.players || data.players.length === 0) {
+                this.log(`❌ NO PLAYER STATS available for ${name}. \n(The API is tracking score, but not individual fouls for this league)`, 'error');
+                return;
+            }
+
+            // CHECK 2: STATS DATA
+            const homePlayers = data.players[0].players;
+            let foulCount = 0;
+            let nullCount = 0;
+
+            homePlayers.forEach(p => {
+                if(p.statistics[0].fouls.committed > 0) foulCount++;
+                if(p.statistics[0].fouls.committed === null) nullCount++;
+            });
+
+            if (foulCount === 0 && nullCount > 0) {
+                this.log(`⚠️ ${name}: Players found, but ALL foul stats are NULL. \n(League may not support live foul tracking)`, 'warn');
+            } else {
+                this.log(`✅ ${name}: OK! Found ${foulCount} players with fouls.`);
+                // Print one example player
+                const ex = homePlayers.find(p => p.statistics[0].fouls.committed > 0);
+                if(ex) this.log(`Example: ${ex.player.name} has ${ex.statistics[0].fouls.committed} fouls.`);
+            }
+
+        } catch (e) {
+            this.log(`Error reading match ${name}: ${e.message}`, 'error');
+        }
+    }
+};
 </script>
 </body>
 </html>
