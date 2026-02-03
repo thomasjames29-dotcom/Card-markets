@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link rel="manifest" href="manifest.json">
-    <title>Foul Watch DEBUGGER</title>
+    <title>Safe Debugger</title>
     <style>
         body { background: #121212; color: #e0e0e0; font-family: monospace; padding: 15px; font-size: 0.85rem; }
         .header { border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 15px; font-weight: bold; font-size: 1.1rem; color: #00ff88; }
@@ -22,9 +22,9 @@
 </head>
 <body>
 
-    <div class="header">🔍 FILTER DEBUGGER</div>
+    <div class="header">🛡️ SAFE DEBUGGER</div>
     
-    <button class="btn" onclick="Debug.run()">SCAN & EXPLAIN</button>
+    <button class="btn" onclick="Debug.run()">START SEQUENTIAL SCAN</button>
     
     <div id="results"></div>
 
@@ -32,7 +32,7 @@
 const Config = {
     apiKey: "0f29a2f96e9dd4231cee515cc5ec52b0", 
     apiBaseUrl: "https://v3.football.api-sports.io",
-    // The exact list from your main app
+    // Your exact league list
     leagues: [179,180,183,184, 39,40,45,48, 140,143, 135,137, 78,81, 61,66, 88,90, 253,188, 2,3,848],
     minTime: 60,
     minFouls: 2
@@ -41,11 +41,13 @@ const Config = {
 const Debug = {
     el: document.getElementById('results'),
     
+    log(html) { this.el.innerHTML += html; },
+
     async run() {
-        this.el.innerHTML = '<div style="text-align:center">Fetching global live feed...</div>';
+        this.el.innerHTML = '<div style="text-align:center">1. Connecting to API...</div>';
         
         try {
-            // 1. Fetch ALL live
+            // 1. Fetch List
             const res = await fetch(`${Config.apiBaseUrl}/fixtures?live=all`, { 
                 headers: { "x-rapidapi-key": Config.apiKey, "x-rapidapi-host": "v3.football.api-sports.io" }
             });
@@ -57,84 +59,101 @@ const Debug = {
                 return;
             }
 
-            this.el.innerHTML = `<div>Found ${matches.length} live matches. Checking filters...</div><br>`;
+            this.el.innerHTML = `<div>Found ${matches.length} live matches. <br>Scanning one-by-one to prevent crash...</div><br>`;
 
-            // 2. Fetch stats for top 20 matches (to capture the one you want)
-            // We sort by league name to try and find 'Serie A' or 'Premiership' matches first
-            matches.sort((a,b) => a.league.name.localeCompare(b.league.name));
+            // 2. Process Sequentially (One at a time)
+            // We prioritize matches that look like they might be the ones we want
+            matches.sort((a,b) => {
+                // Priority to Italy (Serie A) or similar
+                const isPriorityA = Config.leagues.includes(a.league.id);
+                const isPriorityB = Config.leagues.includes(b.league.id);
+                return isPriorityB - isPriorityA;
+            });
+
+            for (const m of matches) {
+                await this.analyzeMatch(m);
+            }
+
+        } catch (e) {
+            this.log(`<div style="color:red; margin-top:20px;">CRITICAL ERROR: ${e.message}</div>`);
+        }
+    },
+
+    async analyzeMatch(m) {
+        const id = m.fixture.id;
+        const name = `${m.teams.home.name} v ${m.teams.away.name}`;
+        
+        // Skip match if we already know the league isn't in our list (save time)
+        // BUT for debugging, let's process it anyway to see the ID
+        
+        try {
+            const r = await fetch(`${Config.apiBaseUrl}/fixtures?id=${id}`, { 
+                headers: { "x-rapidapi-key": Config.apiKey, "x-rapidapi-host": "v3.football.api-sports.io" }
+            });
+            const j = await r.json();
+            const game = j.response[0];
+
+            if(!game) return;
+
+            const leagueId = game.league.id;
+            const leagueName = game.league.name;
+            const time = game.fixture.status.elapsed;
+
+            // DATA CHECK
+            let maxFouls = 0;
+            let playerWithMax = "None";
             
-            // Limit to avoid quota hit, but take enough to find Bologna
-            const subset = matches.slice(0, 30); 
-
-            // Fetch details in parallel
-            const details = await Promise.all(subset.map(async m => {
-                const r = await fetch(`${Config.apiBaseUrl}/fixtures?id=${m.fixture.id}`, { 
-                    headers: { "x-rapidapi-key": Config.apiKey, "x-rapidapi-host": "v3.football.api-sports.io" }
-                });
-                const j = await r.json();
-                return j.response[0];
-            }));
-
-            // 3. ANALYZE EACH
-            let html = '';
-            
-            details.forEach(game => {
-                if(!game) return;
-
-                const name = `${game.teams.home.name} v ${game.teams.away.name}`;
-                const leagueId = game.league.id;
-                const leagueName = game.league.name;
-                const time = game.fixture.status.elapsed;
-                
-                // DATA CHECK
-                let maxFouls = 0;
-                let playerWithMax = "None";
-                
+            if(game.players && game.players.length > 0) {
                 const players = [...game.players[0].players, ...game.players[1].players];
                 players.forEach(p => {
                     const f = p.statistics[0].fouls.committed || 0;
                     if(f > maxFouls) { maxFouls = f; playerWithMax = p.player.name; }
                 });
+            } else {
+                maxFouls = -1; // No Data
+            }
 
-                // FILTER LOGIC DIAGNOSIS
-                let status = "VISIBLE ✅";
-                let reason = "";
-                let css = "visible";
+            // FILTER LOGIC
+            let status = "VISIBLE ✅";
+            let reason = "";
+            let css = "visible";
 
-                // Check 1: League
-                if (!Config.leagues.includes(leagueId)) {
-                    status = "HIDDEN ❌";
-                    reason = `League ID ${leagueId} not in list.`;
-                    css = "hidden";
-                }
-                // Check 2: Time
-                else if (time < Config.minTime) {
-                    status = "HIDDEN ❌";
-                    reason = `Time is ${time}' (Need ${Config.minTime}').`;
-                    css = "hidden";
-                }
-                // Check 3: Fouls
-                else if (maxFouls < Config.minFouls) {
-                    status = "HIDDEN ❌";
-                    reason = `Max fouls is ${maxFouls} (Need ${Config.minFouls}).`;
-                    css = "hidden";
-                } else {
-                    reason = `Target: ${playerWithMax} (${maxFouls} fouls)`;
-                }
+            if (!Config.leagues.includes(leagueId)) {
+                status = "HIDDEN ❌";
+                reason = `League ID ${leagueId} not in list.`;
+                css = "hidden";
+            }
+            else if (time < Config.minTime) {
+                status = "HIDDEN ❌";
+                reason = `Time is ${time}' (Need ${Config.minTime}').`;
+                css = "hidden";
+            }
+            else if (maxFouls === -1) {
+                status = "HIDDEN ❌";
+                reason = "No foul data available.";
+                css = "hidden";
+            }
+            else if (maxFouls < Config.minFouls) {
+                status = "HIDDEN ❌";
+                reason = `Highest foul count is ${maxFouls} (Need ${Config.minFouls}).`;
+                css = "hidden";
+            } else {
+                reason = `Target: ${playerWithMax} (${maxFouls} fouls)`;
+            }
 
-                // Append Card
-                html += `
-                <div class="card ${css}">
-                    <div style="font-size:1rem; font-weight:bold; color:white;">${name}</div>
-                    <div class="meta">${leagueName} | <span class="raw-id">ID: ${leagueId}</span> | Time: ${time}'</div>
-                    <div class="${css === 'visible' ? 'success' : 'reason'}">${status} <br>${reason}</div>
-                </div>`;
-            });
+            // Print Card
+            const html = `
+            <div class="card ${css}">
+                <div style="font-size:1rem; font-weight:bold; color:white;">${name}</div>
+                <div class="meta">${leagueName} | <span class="raw-id">ID: ${leagueId}</span> | Time: ${time}'</div>
+                <div class="${css === 'visible' ? 'success' : 'reason'}">${status} <br>${reason}</div>
+            </div>`;
 
-            this.el.innerHTML += html;
+            this.log(html);
 
         } catch (e) {
-            this.el.innerHTML = `<div style="color:red">Error: ${e.message}</div>`;
+            console.error(e);
+            this.log(`<div style="color:orange; font-size:0.7rem;">Skipped ${name} (Network Error)</div>`);
         }
     }
 };
